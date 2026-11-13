@@ -1,11 +1,10 @@
 #!/bin/bash
-set -e
 
 yum install java-21-openjdk.x86_64 wget -y   
 mkdir -p /opt/nexus/   
 mkdir -p /tmp/nexus/                                           
 cd /tmp/nexus/
-NEXUSURL="https://download.sonatype.com/nexus/3/latest.tar.gz"
+NEXUSURL="https://download.sonatype.com/nexus/3/nexus-3.98.1-01-linux-x86_64.tar.gz"
 wget $NEXUSURL -O nexus.tar.gz
 sleep 10
 tar -xzvf nexus.tar.gz
