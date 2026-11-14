@@ -8,7 +8,7 @@ pipeline {
         NEXUS_REPOSITORY = "vprofile-release"
         NEXUS_REPOGRP_ID = "vprofile-grp-repo"
         NEXUS_CREDENTIAL_ID = "nexuslogin"
-        ARTVERSION = "${env.BUILD_ID}"
+        ARTVERSION = "${env.BUILD_ID}-${env.BUILD_TIMESTAMP}"
     }
     
     stages {
@@ -49,11 +49,7 @@ pipeline {
 
         stage("Quality Gate") {
             steps {
-                timeout(time: 1, unit: 'HOURS') {
-                    // Parameter indicates whether to set pipeline to UNSTABLE if Quality Gate fails
-                    // true = set pipeline to UNSTABLE, false = don't
-                    echo TESTTTT
-                }
+
             }
         }
         
