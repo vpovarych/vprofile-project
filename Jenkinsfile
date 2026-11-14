@@ -56,35 +56,40 @@ pipeline {
         stage("Publish to Nexus Repository Manager") {
             steps {
                 script {
-                    def pom = readMavenPom file: "pom.xml";
-                    filesByGlob = findFiles(glob: "target/*.${pom.packaging}");
-                    echo "${filesByGlob[0].name} ${filesByGlob[0].path} ${filesByGlob[0].directory} ${filesByGlob[0].length} ${filesByGlob[0].lastModified}"
-                    artifactPath = filesByGlob[0].path;
-                    artifactExists = fileExists artifactPath;
-                    if(artifactExists) {
-                        echo "*** File: ${artifactPath}, group: ${pom.groupId}, packaging: ${pom.packaging}, version ${pom.version} ARTVERSION";
-                        nexusArtifactUploader(
-                            nexusVersion: NEXUS_VERSION,
-                            protocol: NEXUS_PROTOCOL,
-                            nexusUrl: NEXUS_URL,
-                            groupId: NEXUS_REPOGRP_ID,
-                            version: ARTVERSION,
-                            repository: NEXUS_REPOSITORY,
-                            credentialsId: NEXUS_CREDENTIAL_ID,
-                            artifacts: [
-                                [artifactId: pom.artifactId,
-                                classifier: '',
-                                file: artifactPath,
-                                type: pom.packaging],
-                                [artifactId: pom.artifactId,
-                                classifier: '',
-                                file: "pom.xml",
-                                type: "pom"]
-                            ]
-                        );
-                    } 
-		    else {
-                        error "*** File: ${artifactPath}, could not be found";
+         		 	// Читаем pom.xml стандартными средствами без внешних плагинов
+      		      	def pomContent = readFile('pom.xml')
+         		  	def pom = new XmlSlurper().parseText(pomContent)
+            	    def projectVersion = pom.version.text()
+            		def projectGroupId = pom.groupId.text() ?: pom.parent.groupId.text()
+            		def projectArtifactId = pom.artifactId.text()
+            		def projectPackaging = pom.packaging.text() ?: 'jar'
+                    def filesByGlob = findFiles(glob: "target/*.${projectPackaging}")
+            		echo "${filesByGlob[0].name} ${filesByGlob[0].path}"
+         		    def artifactPath = filesByGlob[0].path
+            
+         		    if(fileExists(artifactPath)) {
+         		        echo "*** File: ${artifactPath}, group: ${projectGroupId}, packaging: ${projectPackaging}, version ${projectVersion}"
+           			 	nexusArtifactUploader(
+                    	nexusVersion: NEXUS_VERSION,
+                    	protocol: NEXUS_PROTOCOL,
+                    	nexusUrl: NEXUS_URL,
+                    	groupId: NEXUS_REPOGRP_ID,
+                    	version: ARTVERSION,
+                    	repository: NEXUS_REPOSITORY,
+                    	credentialsId: NEXUS_CREDENTIAL_ID,
+                    	artifacts: [
+                     	    [artifactId: projectArtifactId,
+                   		    classifier: '',
+                      	  	file: artifactPath,
+                        	type: projectPackaging],
+                        	[artifactId: projectArtifactId,
+                        	classifier: '',
+                        	file: "pom.xml",
+                      		type: "pom"]
+                    	]
+              		  );
+          		  } else {
+            	    error "*** File: ${artifactPath}, could not be found";
                     }
                 }
             }
