@@ -53,14 +53,13 @@ pipeline {
         }
 
         stage('CODE ANALYSIS with SONARQUBE') {
-            tools {
-              // Имя должно совпадать с именем в: Manage Jenkins -> Tools -> SonarQube Scanner
-                sonarQubeScanner 'sonarscanner4' 
-            }
-
             steps {
-                withSonarQubeEnv('sonar-pro') {
-                    sh '''
+                script {
+            // Динамически получаем путь к установленному инструменту SonarScanner
+                    def scannerHome = tool name: 'sonarscanner4', type: 'hudson.plugins.sonar.SonarRunnerInstallation'
+            
+                    withSonarQubeEnv('sonarqube') { // Укажите имя вашего сервера SonarQube, настроенного в Jenkins
+                        sh '''
                         sonar-scanner \
                             -Dsonar.projectKey=vprofile \
                             -Dsonar.projectName=vprofile-repo \
@@ -70,7 +69,7 @@ pipeline {
                             -Dsonar.junit.reportsPath=target/surefire-reports/ \
                             -Dsonar.jacoco.reportsPath=target/jacoco.exec \
                             -Dsonar.java.checkstyle.reportPaths=target/checkstyle-result.xml
-                    '''
+                        '''
                 }
             }
         }
