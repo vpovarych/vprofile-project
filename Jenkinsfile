@@ -52,24 +52,29 @@ pipeline {
             }
         }
 
-        stage('CODE ANALYSIS with SONARQUBE') {
+        stage('CODE ANALYSIS WITH SONARCLOUD') {
             steps {
-                script {
-            // Динамически получаем путь к установленному инструменту SonarScanner
-                    def scannerHome = tool name: 'sonarscanner4', type: 'hudson.plugins.sonar.SonarRunnerInstallation'
-            
-                    withSonarQubeEnv('sonarqube') { // Укажите имя вашего сервера SonarQube, настроенного в Jenkins
-                        sh '''
+                withCredentials([string(credentialsId: 'sonarcloud-token', variable: 'SONAR_TOKEN')]) {
+                    sh '''
+                        export SONAR_SCANNER_VERSION=8.2.0.6438
+                        export SONAR_SCANNER_HOME=$HOME/.sonar/sonar-scanner-$SONAR_SCANNER_VERSION-linux-x64
+                        
+                        if [ ! -d "$SONAR_SCANNER_HOME" ]; then
+                            curl --create-dirs -sSLo $HOME/.sonar/sonar-scanner.zip https://binaries.sonarsource.com/Distribution/sonar-scanner-cli/sonar-scanner-cli-$SONAR_SCANNER_VERSION-linux-x64.zip
+                            unzip -o $HOME/.sonar/sonar-scanner.zip -d $HOME/.sonar/
+                        fi
+                        
+                        export PATH=$SONAR_SCANNER_HOME/bin:$PATH
+                        
                         sonar-scanner \
-                            -Dsonar.projectKey=vprofile \
-                            -Dsonar.projectName=vprofile-repo \
-                            -Dsonar.projectVersion=1.0 \
-                            -Dsonar.sources=src/ \
-                            -Dsonar.java.binaries=target/test-classes/com/visualpathit/account/controllerTest/ \
-                            -Dsonar.junit.reportsPath=target/surefire-reports/ \
-                            -Dsonar.jacoco.reportsPath=target/jacoco.exec \
-                            -Dsonar.java.checkstyle.reportPaths=target/checkstyle-result.xml
-                        '''}
+                          -Dsonar.host.url=https://sonarcloud.io \
+                          -Dsonar.token=$SONAR_TOKEN
+                    '''
+                }
+            }
+            post {
+                success {
+                    echo 'SonarCloud Analysis Completed Successfully'
                 }
             }
         }
