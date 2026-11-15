@@ -1,8 +1,8 @@
 steps:
-  # Step 1: Create Firewall rule for SonarQube Web UI (Port 9000) if it doesn't already exist
+  # Шаг 1: Создание правила Firewall для порта 9000 (если его еще нет)
   - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
-    id: 'create-firewall-rule'
-    entrypoint: 'bash'
+    id: 'create-firewall'
+      entrypoint: 'bash'
     args:
       - '-c'
       - |
@@ -18,37 +18,100 @@ steps:
           echo "Firewall rule already exists."
         fi
 
-  # Step 2: Deploy or update SonarQube VM with Container-Optimized OS
+  # Шаг 2: Создание или обновление ВМ с Docker и SonarQube
   - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
-    id: 'deploy-sonarqube-vm'
+    id: 'deploy-sonarqube'
     entrypoint: 'bash'
     args:
       - '-c'
       - |
         ZONE="europe-west8-b"
         INSTANCE_NAME="sonarqube-server"
-        IMAGE="sonarqube:community"
+
+        # Скрипт инициализации: настраивает ядро ОС, ставит Docker и запускает контейнер
+        cat << 'EOF' > startup.sh
+        #!/bin/bash
+        set -e
+        if swapon --show | grep -q "/swapfile"; then
+          echo "Swapfile is already active."
+          exit 0
+        fi
+
+        echo "1. Creating 4 GB swapfile..."
+        dd if=/dev/zero of=/swapfile bs=1M count=4096 status=progress
+
+        echo "2. Securing permissions and SELinux context..."
+        chmod 600 /swapfile
+        chcon -t swapfile_t /swapfile || true
+
+        echo "3. Formatting and activating swap..."
+        mkswap /swapfile
+        swapon /swapfile
+
+        echo "4. Persisting to /etc/fstab..."
+        if ! grep -q "/swapfile" /etc/fstab; then
+          cp /etc/fstab /etc/fstab.bak
+          echo "/swapfile none swap sw 0 0" >> /etc/fstab
+        fi
+
+        echo "5. Tuning swappiness..."
+        cat << "EOF" > /etc/sysctl.d/99-swap.conf
+        vm.swappiness=10
+        vm.vfs_cache_pressure=50
+        EOF
+        sysctl -p /etc/sysctl.d/99-swap.conf
+
+        echo "=== Swap successfully enabled ==="
+        swapon --show
+        
+        # 1. Обязательные параметры ядра для Elasticsearch в SonarQube
+        sysctl -w vm.max_map_count=524288
+        sysctl -w fs.file-max=131072
+        echo "vm.max_map_count=524288" >> /etc/sysctl.conf
+        echo "fs.file-max=131072" >> /etc/sysctl.conf
+
+        # 2. Установка Docker
+        apt-get update -y
+        apt-get install -y docker.io
+        systemctl enable --now docker
+
+        # 3. Запуск актуального контейнера SonarQube с постоянными томами (volumes)
+        docker pull sonarqube:community
+        docker stop sonarqube 2>/dev/null || true
+        docker rm sonarqube 2>/dev/null || true
+
+        docker run -d \
+          --name sonarqube \
+          --restart unless-stopped \
+          -p 9000:9000 \
+          -v sonarqube_data:/opt/sonarqube/data \
+          -v sonarqube_extensions:/opt/sonarqube/extensions \
+          -v sonarqube_logs:/opt/sonarqube/logs \
+          sonarqube:community
+        EOF
 
         if gcloud compute instances describe $$INSTANCE_NAME --zone=$$ZONE --project=$PROJECT_ID &>/dev/null; then
-          echo "Instance exists. Updating container image to latest..."
-          gcloud compute instances update-container $$INSTANCE_NAME \
+          echo "Instance exists. Updating startup script and restarting..."
+          gcloud compute instances add-metadata $$INSTANCE_NAME \
             --zone=$$ZONE \
             --project=$PROJECT_ID \
-            --container-image=$$IMAGE
+            --metadata-from-file=startup-script=startup.sh
+          gcloud compute instances reset $$INSTANCE_NAME --zone=$$ZONE --project=$PROJECT_ID
         else
-          echo "Creating new SonarQube instance with latest container..."
-          gcloud compute instances create-with-container $$INSTANCE_NAME \
+          echo "Creating new Ubuntu VM with Docker and SonarQube..."
+          gcloud compute instances create $$INSTANCE_NAME \
             --zone=$$ZONE \
             --project=$PROJECT_ID \
             --machine-type=e2-small \
-            --tags=sonarqube-server \
-            --container-image=$$IMAGE \
+            --image-family=ubuntu-2204-lts \
+            --image-project=ubuntu-os-cloud \
             --boot-disk-size=30GB \
             --boot-disk-type=pd-balanced \
-            --container-env=SONAR_ES_BOOTSTRAP_CHECKS_DISABLE=true
+            --tags=sonarqube-server \
+            --metadata-from-file=startup-script=startup.sh
         fi
 
-  # Step 3: Print Public IP
+  # Шаг 3: Получение и вывод внешнего IP-адреса
   - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
     id: 'get-ip'
     entrypoint: 'bash'
@@ -60,12 +123,10 @@ steps:
           --project=$PROJECT_ID \
           --format="value(networkInterfaces[0].accessConfigs[0].natIP)")
         echo "=================================================="
-        echo "SonarQube is deploying at: http://$${IP}:9000"
+        echo "SonarQube URL: http://$${IP}:9000"
         echo "Default credentials: admin / admin"
+        echo "(Пожалуйста, подождите 2-3 минуты после завершения сборки, пока Docker загрузит и запустит SonarQube)"
         echo "=================================================="
 
 options:
   logging: CLOUD_LOGGING_ONLY
-
-substitutions:
-  _ZONE: 'europe-west8-b'
