@@ -1,23 +1,4 @@
 steps:
-  # Шаг 1: Создание правила Firewall для порта 9000 (если его еще нет)
-  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
-    id: 'create-firewall'
-      entrypoint: 'bash'
-    args:
-      - '-c'
-      - |
-        if ! gcloud compute firewall-rules describe allow-sonarqube-9000 --project=$PROJECT_ID &>/dev/null; then
-          echo "Creating firewall rule for port 9000..."
-          gcloud compute firewall-rules create allow-sonarqube-9000 \
-            --project=$PROJECT_ID \
-            --allow=tcp:9000 \
-            --source-ranges=0.0.0.0/0 \
-            --target-tags=sonarqube-server \
-            --description="Allow SonarQube UI and API"
-        else
-          echo "Firewall rule already exists."
-        fi
-
   # Шаг 2: Создание или обновление ВМ с Docker и SonarQube
   - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
     id: 'deploy-sonarqube'
