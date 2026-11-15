@@ -1,0 +1,71 @@
+steps:
+  # Step 1: Create Firewall rule for SonarQube Web UI (Port 9000) if it doesn't already exist
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    id: 'create-firewall-rule'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        if ! gcloud compute firewall-rules describe allow-sonarqube-9000 --project=$PROJECT_ID &>/dev/null; then
+          echo "Creating firewall rule for port 9000..."
+          gcloud compute firewall-rules create allow-sonarqube-9000 \
+            --project=$PROJECT_ID \
+            --allow=tcp:9000 \
+            --source-ranges=0.0.0.0/0 \
+            --target-tags=sonarqube-server \
+            --description="Allow SonarQube UI and API"
+        else
+          echo "Firewall rule already exists."
+        fi
+
+  # Step 2: Deploy or update SonarQube VM with Container-Optimized OS
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    id: 'deploy-sonarqube-vm'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        ZONE="europe-west8-b"
+        INSTANCE_NAME="sonarqube-server"
+        IMAGE="sonarqube:community"
+
+        if gcloud compute instances describe $$INSTANCE_NAME --zone=$$ZONE --project=$PROJECT_ID &>/dev/null; then
+          echo "Instance exists. Updating container image to latest..."
+          gcloud compute instances update-container $$INSTANCE_NAME \
+            --zone=$$ZONE \
+            --project=$PROJECT_ID \
+            --container-image=$$IMAGE
+        else
+          echo "Creating new SonarQube instance with latest container..."
+          gcloud compute instances create-with-container $$INSTANCE_NAME \
+            --zone=$$ZONE \
+            --project=$PROJECT_ID \
+            --machine-type=e2-small \
+            --tags=sonarqube-server \
+            --container-image=$$IMAGE \
+            --boot-disk-size=30GB \
+            --boot-disk-type=pd-balanced \
+            --container-env=SONAR_ES_BOOTSTRAP_CHECKS_DISABLE=true
+        fi
+
+  # Step 3: Print Public IP
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    id: 'get-ip'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        IP=$(gcloud compute instances describe sonarqube-server \
+          --zone=europe-west8-b \
+          --project=$PROJECT_ID \
+          --format="value(networkInterfaces[0].accessConfigs[0].natIP)")
+        echo "=================================================="
+        echo "SonarQube is deploying at: http://$${IP}:9000"
+        echo "Default credentials: admin / admin"
+        echo "=================================================="
+
+options:
+  logging: CLOUD_LOGGING_ONLY
+
+substitutions:
+  _ZONE: 'europe-west8-b'
