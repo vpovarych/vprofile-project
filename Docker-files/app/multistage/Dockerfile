@@ -1,13 +1,12 @@
-FROM openjdk:11 AS BUILD_IMAGE
-RUN apt update && apt install maven -y
+FROM eclipse-temurin:11-jdk AS BUILD_IMAGE
+RUN apt-get update && apt-get install -y maven git && rm -rf /var/lib/apt/lists/*
 RUN git clone https://github.com/vpovarych/vprofile-project.git
-RUN cd vprofile-project && git checkout docker && mvn install
+WORKDIR /vprofile-project
+RUN git checkout docker && mvn clean install -DskipTests
 
-FROM tomcat:9-jre11
-
+FROM tomcat:9.0-jre11
 RUN rm -rf /usr/local/tomcat/webapps/*
-
-COPY --from=BUILD_IMAGE vprofile-project/target/vprofile-v2.war /usr/local/tomcat/webapps/ROOT.war
+COPY --from=BUILD_IMAGE /vprofile-project/target/vprofile-v2.war /usr/local/tomcat/webapps/ROOT.war
 
 EXPOSE 8080
 CMD ["catalina.sh", "run"]
