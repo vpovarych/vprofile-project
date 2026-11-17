@@ -23,8 +23,8 @@ pipeline {
       //  SONAR_SERVER = 'sonarserver'
         SONAR_SCANNER = 'sonar-scanner'
         registryCredential = 'nexuslogin'
-        appRegistry = "34.154.89.128:8081/repository/docker-hosted/vprofileappimg"
-        vprofileRegistry = "http://34.154.89.128:8081/repository/docker-hosted"
+        appRegistry = "34.154.89.128:8083/repository/docker-hosted/vprofileappimg"
+        vprofileRegistry = "http://34.154.89.128:8083/repository/docker-hosted"
     }
     
     stages {
