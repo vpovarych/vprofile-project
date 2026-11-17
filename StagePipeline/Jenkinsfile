@@ -5,21 +5,30 @@ def COLOR_MAP = [
 
 pipeline {
     agent any
-    
+    tools {
+        maven "MAVEN3"
+        jdk "OracleJDK21"
+    }
     environment {
+        SNAP_REPO = 'vprofile-snapshot'
         NEXUS_VERSION = "nexus3"
         NEXUS_PROTOCOL = "http"
+        RELEASE_REPO = 'vprofile-release'
+        CENTRAL_REPO = 'vpro-maven-central'
         NEXUS_URL = "10.0.1.2:8081"
-        NEXUS_REPOSITORY = "vprofile-release"
         NEXUS_REPOGRP_ID = "vprofile-grp-repo"
         NEXUS_CREDENTIAL_ID = "nexuslogin"
-        ARTVERSION = "${env.BUILD_ID}_-_${env.BUILD_TIMESTAMP}"
+      #  SONAR_SERVER = 'sonarserver'
+        SONAR_SCANNER = 'sonar-scanner'
+        registryCredential = 'nexuslogin'
+        appRegistry = "34.154.89.128:8081/repository/docker-hosted/vprofileappimg"
+        vprofileRegistry = "http://34.154.89.128:8081/repository/docker-hosted"
     }
     
     stages {
         stage('BUILD') {
             steps {
-                sh 'mvn clean install -DskipTests'
+                sh 'mvn -s settings.xml -DskipTests install'  #clean
             }
             post {
                 success {
@@ -119,7 +128,24 @@ pipeline {
                 }
             }
         }
-    }
+        stage('Build App Image'){
+            steps {
+                script {
+                    dockerImage = docker.build(appRegistry + ":$BUILD_NUMBER", "./Docker-files/app/multistage")
+                }
+            }    
+         }
+         stage('Upload App Image'){
+             steps {
+                 script {
+                     docker.withRegistry( vprofileRegistry, registryCredential){
+                         dockerImage.push("$BUILD_NUMBER")
+                         dockerImage.push('latest')
+                     }
+                 }
+             }   
+         }
+    }    
     post {
         always {
             echo 'Slack Notification'
