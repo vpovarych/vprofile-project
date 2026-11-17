@@ -20,8 +20,6 @@ pipeline {
         NEXUS_REPOGRP_ID = "vprofile-grp-repo"
         NEXUS_CREDENTIAL_ID = "nexuslogin"
         ARTVERSION = "${env.BUILD_ID}:${env.BUILD_TIMESTAMP}"
-      //  SONAR_SERVER = 'sonarserver'
-        SONAR_SCANNER = 'sonar-scanner'
         registryCredential = 'nexuslogin'
         appRegistry = "34.154.89.128:8083/vprofileappimg"
         vprofileRegistry = "http://34.154.89.128:8083"
@@ -63,7 +61,7 @@ pipeline {
             }
         }
 
-  /*      stage('CODE ANALYSIS WITH SONARCLOUD') {
+        stage('CODE ANALYSIS WITH SONARCLOUD') {
             steps {
                 withCredentials([string(credentialsId: 'sonarcloud-token', variable: 'SONAR_TOKEN')]) {
                     sh '''
@@ -89,6 +87,16 @@ pipeline {
                 }
             }
         }   
+
+        stage("Quality Gate") {
+            steps {
+                timeout(time: 1, unit: 'HOURS') {
+                    // Parameter indicates whether to set pipeline to UNSTABLE if Quality Gate fails
+                    // true = set pipeline to UNSTABLE, false = don't
+                    waitForQualityGate abortPipeline: true
+                }
+            }
+        }
         
         stage('Publish to Nexus Repository Manager') {
             steps {
@@ -129,7 +137,8 @@ pipeline {
                     }
                 }
             }
-        }   */
+        }  
+        
         stage('Build App Image'){
             steps {
                 script {
