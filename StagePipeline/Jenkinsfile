@@ -18,7 +18,7 @@ pipeline {
         NEXUS_URL = "10.0.1.2:8081"
         NEXUS_REPOGRP_ID = "vprofile-grp-repo"
         NEXUS_CREDENTIAL_ID = "nexuslogin"
-      #  SONAR_SERVER = 'sonarserver'
+      //  SONAR_SERVER = 'sonarserver'
         SONAR_SCANNER = 'sonar-scanner'
         registryCredential = 'nexuslogin'
         appRegistry = "34.154.89.128:8081/repository/docker-hosted/vprofileappimg"
@@ -28,7 +28,7 @@ pipeline {
     stages {
         stage('BUILD') {
             steps {
-                sh 'mvn -s settings.xml -DskipTests install'  #clean
+                sh 'mvn -s settings.xml -DskipTests install'  //clean
             }
             post {
                 success {
