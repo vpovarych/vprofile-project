@@ -23,8 +23,8 @@ pipeline {
       //  SONAR_SERVER = 'sonarserver'
         SONAR_SCANNER = 'sonar-scanner'
         registryCredential = 'nexuslogin'
-        appRegistry = "34.154.89.128:8083/repository/docker-hosted/vprofileappimg"
-        vprofileRegistry = "http://34.154.89.128:8083/repository/docker-hosted"
+        appRegistry = "34.154.89.128:8083/vprofileappimg"
+        vprofileRegistry = "http://34.154.89.128:8083"
     }
     
     stages {
@@ -63,7 +63,7 @@ pipeline {
             }
         }
 
-        stage('CODE ANALYSIS WITH SONARCLOUD') {
+  /*      stage('CODE ANALYSIS WITH SONARCLOUD') {
             steps {
                 withCredentials([string(credentialsId: 'sonarcloud-token', variable: 'SONAR_TOKEN')]) {
                     sh '''
@@ -88,7 +88,7 @@ pipeline {
                     echo 'SonarCloud Analysis Completed Successfully'
                 }
             }
-        }
+        }   
         
         stage('Publish to Nexus Repository Manager') {
             steps {
@@ -129,7 +129,7 @@ pipeline {
                     }
                 }
             }
-        }
+        }   */
         stage('Build App Image'){
             steps {
                 script {
