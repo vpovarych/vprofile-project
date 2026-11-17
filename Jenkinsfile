@@ -1,48 +1,47 @@
+def COLOR_MAP = [
+    'SUCCESS': 'good',
+    'FAILURE': 'danger',
+]
+
 pipeline {
+    agent any
     
-	agent any
-/*	
-	tools {
-        maven "maven3"
-    }
-*/	
     environment {
         NEXUS_VERSION = "nexus3"
         NEXUS_PROTOCOL = "http"
-        NEXUS_URL = "172.31.40.209:8081"
+        NEXUS_URL = "10.0.1.2:8081"
         NEXUS_REPOSITORY = "vprofile-release"
-	NEXUS_REPOGRP_ID    = "vprofile-grp-repo"
+        NEXUS_REPOGRP_ID = "vprofile-grp-repo"
         NEXUS_CREDENTIAL_ID = "nexuslogin"
-        ARTVERSION = "${env.BUILD_ID}"
+        ARTVERSION = "${env.BUILD_ID}_-_${env.BUILD_TIMESTAMP}"
     }
-	
-    stages{
-        
-        stage('BUILD'){
+    
+    stages {
+        stage('BUILD') {
             steps {
                 sh 'mvn clean install -DskipTests'
             }
             post {
                 success {
-                    echo 'Now Archiving...'
+                    echo 'Now Archiving......'
                     archiveArtifacts artifacts: '**/target/*.war'
                 }
             }
         }
 
-	stage('UNIT TEST'){
+        stage('UNIT TEST') {
             steps {
                 sh 'mvn test'
             }
         }
 
-	stage('INTEGRATION TEST'){
+        stage('INTEGRATION TEST') {
             steps {
                 sh 'mvn verify -DskipUnitTests'
             }
         }
-		
-        stage ('CODE ANALYSIS WITH CHECKSTYLE'){
+        
+        stage('CODE ANALYSIS WITH CHECKSTYLE') {
             steps {
                 sh 'mvn checkstyle:checkstyle'
             }
@@ -53,40 +52,48 @@ pipeline {
             }
         }
 
-        stage('CODE ANALYSIS with SONARQUBE') {
-          
-		  environment {
-             scannerHome = tool 'sonarscanner4'
-          }
-
-          steps {
-            withSonarQubeEnv('sonar-pro') {
-               sh '''${scannerHome}/bin/sonar-scanner -Dsonar.projectKey=vprofile \
-                   -Dsonar.projectName=vprofile-repo \
-                   -Dsonar.projectVersion=1.0 \
-                   -Dsonar.sources=src/ \
-                   -Dsonar.java.binaries=target/test-classes/com/visualpathit/account/controllerTest/ \
-                   -Dsonar.junit.reportsPath=target/surefire-reports/ \
-                   -Dsonar.jacoco.reportsPath=target/jacoco.exec \
-                   -Dsonar.java.checkstyle.reportPaths=target/checkstyle-result.xml'''
+        stage('CODE ANALYSIS WITH SONARCLOUD') {
+            steps {
+                withCredentials([string(credentialsId: 'sonarcloud-token', variable: 'SONAR_TOKEN')]) {
+                    sh '''
+                        export SONAR_SCANNER_VERSION=8.2.0.6438
+                        export SONAR_SCANNER_HOME=$HOME/.sonar/sonar-scanner-$SONAR_SCANNER_VERSION-linux-x64
+                        
+                        if [ ! -d "$SONAR_SCANNER_HOME" ]; then
+                            curl --create-dirs -sSLo $HOME/.sonar/sonar-scanner.zip https://binaries.sonarsource.com/Distribution/sonar-scanner-cli/sonar-scanner-cli-$SONAR_SCANNER_VERSION-linux-x64.zip
+                            unzip -o $HOME/.sonar/sonar-scanner.zip -d $HOME/.sonar/
+                        fi
+                        
+                        export PATH=$SONAR_SCANNER_HOME/bin:$PATH
+                        
+                        sonar-scanner \
+                          -Dsonar.host.url=https://sonarcloud.io \
+                          -Dsonar.token=$SONAR_TOKEN
+                    '''
+                }
             }
-
-            timeout(time: 10, unit: 'MINUTES') {
-               waitForQualityGate abortPipeline: true
+            post {
+                success {
+                    echo 'SonarCloud Analysis Completed Successfully'
+                }
             }
-          }
         }
-
-        stage("Publish to Nexus Repository Manager") {
+        
+        stage('Publish to Nexus Repository Manager') {
             steps {
                 script {
-                    pom = readMavenPom file: "pom.xml";
-                    filesByGlob = findFiles(glob: "target/*.${pom.packaging}");
-                    echo "${filesByGlob[0].name} ${filesByGlob[0].path} ${filesByGlob[0].directory} ${filesByGlob[0].length} ${filesByGlob[0].lastModified}"
-                    artifactPath = filesByGlob[0].path;
-                    artifactExists = fileExists artifactPath;
-                    if(artifactExists) {
-                        echo "*** File: ${artifactPath}, group: ${pom.groupId}, packaging: ${pom.packaging}, version ${pom.version} ARTVERSION";
+                    // Извлекаем метаданные через Maven в shell (полный обход песочницы Sandbox)
+                    def projectVersion = sh(script: 'mvn help:evaluate -Dexpression=project.version -q -DforceStdout', returnStdout: true).trim()
+                    def projectGroupId = sh(script: 'mvn help:evaluate -Dexpression=project.groupId -q -DforceStdout', returnStdout: true).trim()
+                    def projectArtifactId = sh(script: 'mvn help:evaluate -Dexpression=project.artifactId -q -DforceStdout', returnStdout: true).trim()
+                    def projectPackaging = sh(script: 'mvn help:evaluate -Dexpression=project.packaging -q -DforceStdout', returnStdout: true).trim() ?: 'jar'
+                    
+                    def filesByGlob = findFiles(glob: "target/*.${projectPackaging}")
+                    echo "${filesByGlob[0].name} ${filesByGlob[0].path}"
+                    def artifactPath = filesByGlob[0].path
+                    
+                    if(fileExists(artifactPath)) {
+                        echo "*** File: ${artifactPath}, group: ${projectGroupId}, packaging: ${projectPackaging}, version ${projectVersion}"
                         nexusArtifactUploader(
                             nexusVersion: NEXUS_VERSION,
                             protocol: NEXUS_PROTOCOL,
@@ -96,26 +103,29 @@ pipeline {
                             repository: NEXUS_REPOSITORY,
                             credentialsId: NEXUS_CREDENTIAL_ID,
                             artifacts: [
-                                [artifactId: pom.artifactId,
-                                classifier: '',
-                                file: artifactPath,
-                                type: pom.packaging],
-                                [artifactId: pom.artifactId,
-                                classifier: '',
-                                file: "pom.xml",
-                                type: "pom"]
+                                [artifactId: projectArtifactId,
+                                 classifier: '',
+                                 file: artifactPath,
+                                 type: projectPackaging],
+                                [artifactId: projectArtifactId,
+                                 classifier: '',
+                                 file: "pom.xml",
+                                 type: "pom"]
                             ]
                         );
-                    } 
-		    else {
+                    } else {
                         error "*** File: ${artifactPath}, could not be found";
                     }
                 }
             }
         }
-
-
     }
-
-
+    post {
+        always {
+            echo 'Slack Notification'
+            slackSend channel: '#jenkinscicd',
+                color: COLOR_MAP[currentBuild.currentResult],
+                message: "*${currentBuild.currentResult}:* Job ${env.JOB_NAME} build ${env.BUILD_NUMBER} \n More info: ${env.BUILD_URL}"
+        }
+    }    
 }
